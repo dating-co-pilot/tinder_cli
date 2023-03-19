@@ -1,6 +1,15 @@
-from typing import Literal, Dict, Optional
+from typing import Literal, Dict, Optional, List, Tuple
+from .parse_utils import parse_profile_response, parse_matches, parse_messages
+from .models import Profile, Match, Message
 import requests
 import json
+import logging
+
+
+logging.basicConfig(
+    level=logging.WARNING, format="%(asctime)s : %(levelname)s : %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 class Defaults:
@@ -123,7 +132,7 @@ class TinderSMSApi:
             r = None
             data = json.dumps(data) if data else None
             if method == "POST":
-                r = (requests.post(url, headers=headers, data=data, **kwargs),)
+                r = requests.post(url, headers=headers, data=data, **kwargs)
             elif method == "GET":
                 r = requests.get(url, headers=headers, data=data, **kwargs)
             elif method == "PUT":
@@ -134,7 +143,7 @@ class TinderSMSApi:
                 raise ValueError(f"Invalid method: {method}")
             return r.json()
         except requests.exceptions.RequestException as err:
-            print(f"{err_msg}:", err)
+            logger.error(f"{err_msg}:", err)
 
     def basic_request(
         self,
@@ -182,11 +191,12 @@ class TinderSMSApi:
         """
         Returns your own profile data
         """
-        return self.basic_request(
+        res = self.basic_request(
             f"{TinderSMSApiEndpoints.HOST}/profile",
             method="GET",
             err_msg="Something went wrong with getting your data",
         )
+        return res
 
     def change_preferences(self, **kwargs):
         """
@@ -270,15 +280,16 @@ class TinderSMSApi:
             err_msg="Something went wrong with resetting your webprofile username",
         )
 
-    def get_person(self, person_id: str):
+    def get_profile(self, person_id: str) -> Profile:
         """
         Gets a user's profile via their id
         """
-        return self.basic_request(
+        res = self.basic_request(
             f"{TinderSMSApiEndpoints.HOST}/user/{person_id}",
             method="GET",
             err_msg="Something went wrong with getting that person",
         )
+        return parse_profile_response(res)
 
     def send_msg(self, match_id: str, msg: str):
         return self.basic_request(
@@ -330,16 +341,36 @@ class TinderSMSApi:
             err_msg="Something went wrong. Could not get your match info",
         )
 
-    def all_matches(self, limit: int = 60):
-        return self.basic_request(
-            f"{TinderSMSApiEndpoints.HOST}/v2/matches?locale=en&count={limit}&is_tinder_u=false",
-            method="GET",
-            err_msg="Something went wrong. Could not get your match info",
-        )
+    def get_matches(
+        self, limit: int = 60, next_page_token: Optional[str] = None
+    ) -> Tuple[List[Match], Optional[str]]:
+        """
+        Returns a list of matches and the next page token if there is one
+        """
+        url = f"{TinderSMSApiEndpoints.HOST}/v2/matches?locale=en&count={limit}&is_tinder_u=false"
+        if next_page_token is not None:
+            url += f"&page_token={next_page_token}"
 
-    def get_messages(self, match_id: str, limit: int = 60):
-        return self.basic_request(
-            f"{TinderSMSApiEndpoints.HOST}/v2/matches/{match_id}/messages?locale=en&count={limit}",
+        res = self.basic_request(
+            url,
             method="GET",
             err_msg="Something went wrong. Could not get your match info",
         )
+        return parse_matches(res)
+
+    def get_messages(
+        self, match_id: str, limit: int = 60, next_page_token: Optional[str] = None
+    ) -> Tuple[List[Message], Optional[str]]:
+        """
+        Returns a list of messages and the next page token if there is one
+        """
+        url = f"{TinderSMSApiEndpoints.HOST}/v2/matches/{match_id}/messages?locale=en&count={limit}"
+        if next_page_token is not None:
+            url += f"&page_token={next_page_token}"
+
+        res = self.basic_request(
+            url,
+            method="GET",
+            err_msg="Something went wrong. Could not get your match info",
+        )
+        return parse_messages(res)

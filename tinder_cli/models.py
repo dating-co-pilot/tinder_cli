@@ -1,14 +1,16 @@
-from typing import List, NamedTuple, Optional, Literal
+from typing import List, Optional, Literal
 from datetime import datetime
+from dataclasses import dataclass
 
 
-class AdditionalInfo(NamedTuple):
+@dataclass
+class AdditionalInfo:
     """
     Additional info about tinder user profile (non mandatory fields)
     """
 
     # looking for
-    relationsip_goals: Optional[
+    relationship_goals: Optional[
         Literal[
             "long-term partner",
             "long-term, but open to short-term",
@@ -17,13 +19,13 @@ class AdditionalInfo(NamedTuple):
             "new friends",
             "still figuring it out",
         ]
-    ]
+    ] = None
     # passions
-    passions: Optional[List[str]]  # maximum 5
+    passions: Optional[List[str]] = None  # maximum 5
     # languages
-    languages: Optional[List[str]]  # maximum 5
+    languages: Optional[List[str]] = None  # maximum 5
     # basics
-    zodiac_sign: Optional[str]
+    zodiac_sign: Optional[str] = None
     education_level: Optional[
         Literal[
             "Bachelor degree",
@@ -34,7 +36,7 @@ class AdditionalInfo(NamedTuple):
             "Master degree",
             "Trade school",
         ]
-    ]
+    ] = None
     children_attitude: Optional[
         Literal[
             "I want children",
@@ -43,10 +45,10 @@ class AdditionalInfo(NamedTuple):
             "I have children and don't want more",
             "Not sure yet",
         ]
-    ]
+    ] = None
     vaccination_status: Optional[
         Literal["Vaccinated", "Unvaccinated", "Prefer not to say"]
-    ]
+    ] = None
     personality_type: Optional[
         Literal[
             "INTJ",
@@ -66,7 +68,7 @@ class AdditionalInfo(NamedTuple):
             "ESTP",
             "ESFP",
         ]
-    ]
+    ] = None
     communication_style: Optional[
         Literal[
             "Big time texter",
@@ -75,12 +77,12 @@ class AdditionalInfo(NamedTuple):
             "Bad texter",
             "Better in person",
         ]
-    ]
+    ] = None
     love_receive_language: Optional[
         Literal[
             "Thoughtful gestures", "Presents", "Touch", "Compliments", "Time together"
         ]
-    ]
+    ] = None
     # lifestyle
     pets: Optional[
         Literal[
@@ -100,7 +102,7 @@ class AdditionalInfo(NamedTuple):
             "Want a pet",
             "Allergic to pets",
         ]
-    ]
+    ] = None
     drinking: Optional[
         Literal[
             "Not for me",
@@ -110,7 +112,7 @@ class AdditionalInfo(NamedTuple):
             "Socially, at the weekend",
             "Most nights",
         ]
-    ]
+    ] = None
     smoking: Optional[
         Literal[
             "Social smoker",
@@ -119,8 +121,10 @@ class AdditionalInfo(NamedTuple):
             "Smoker",
             "Trying to quit",
         ]
-    ]
-    training_frequency: Optional[Literal["Every day", "Often", "Sometimes", "Never"]]
+    ] = None
+    training_frequency: Optional[
+        Literal["Every day", "Often", "Sometimes", "Never"]
+    ] = None
     diet_preferences: Optional[
         Literal[
             "Vegan",
@@ -132,29 +136,29 @@ class AdditionalInfo(NamedTuple):
             "Omnivore",
             "Other",
         ]
-    ]
+    ] = None
     social_media_presence: Optional[
         Literal[
             "Influencer status", "Socially active", "Off the grid", "Passive scroller"
         ]
-    ]
+    ] = None
     sleeping_habits: Optional[
         Literal[
             "Early bird",
             "Night owl",
             "It varies",
         ]
-    ]
+    ] = None
     # work
-    job_title: Optional[str]
-    company: Optional[str]
-    school: Optional[str]
-    # living info
-    location: Optional[str]  # usally city, state
+    job_title: Optional[str] = None
+    company: Optional[str] = None
+    schools: Optional[List[str]] = None
+    # location info
+    location: Optional[str] = None  # usally city
     # gender
-    gender: Optional[str]  # usually 'Man' or 'Woman'
+    gender: Optional[str] = None  # usually 'Man' or 'Woman'
     # orientation
-    sexual_orientation: Optional[
+    sexual_orientations: Optional[
         List[
             Literal[
                 "Straight",
@@ -168,10 +172,11 @@ class AdditionalInfo(NamedTuple):
                 "Questioning",
             ]
         ]
-    ]  # max 3
+    ] = None  # max 3
 
 
-class Profile(NamedTuple):
+@dataclass
+class Profile:
     """
     Tinder user profile info
     """
@@ -185,7 +190,8 @@ class Profile(NamedTuple):
     additional: AdditionalInfo
 
 
-class Message(NamedTuple):
+@dataclass
+class Message:
     """
     Tinder single message info
     """
@@ -193,16 +199,16 @@ class Message(NamedTuple):
     _id: str
     sent_date: datetime
     message: str
-    to: str
-    from_: str
+    to_id: str
+    from_id: str
     match_id: str
 
 
-class Match(NamedTuple):
+@dataclass
+class Match:
     """
-    Tinder match info (profile + messages + match id)
+    Tinder match info (profile_id + match_id)
     """
 
-    _id: str
-    profile: Profile
-    messages: List[Message]
+    match_id: str
+    profile_id: str
