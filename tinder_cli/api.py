@@ -25,7 +25,123 @@ class TinderSMSApiEndpoints:
     TOKEN_URL = f"{HOST}/v2/auth/login/sms"
 
 
-class TinderSMSApi:
+class BaseTinderClient:
+    app_version: str
+    platform: str
+    user_agent: str
+
+    def __init__(
+        self,
+        app_version: str = Defaults.APP_VERSION,
+        platform: str = Defaults.PLATFORM,
+        user_agent: str = Defaults.USER_AGENT,
+    ) -> None:
+        self.app_version = app_version
+        self.platform = platform
+        self.user_agent = user_agent
+
+    def get_headers(self) -> Dict[str, str]:
+        """
+        Returns the headers for the Tinder API
+        """
+        return {
+            "app_version": self.app_version,
+            "platform": self.platform,
+            "content-type": "application/json",
+            "User-agent": self.user_agent,
+        }
+
+    def general_request(
+        self,
+        url: str,
+        method: Literal["GET", "POST", "PUT", "DELETE"],
+        err_msg: str,
+        data: Optional[Dict[str, str]] = None,
+        **kwargs,
+    ) -> Dict[str, str]:
+        """
+        Handles general request to the Tinder API
+        """
+        try:
+            data = json.dumps(data) if data else None
+            req_collable = getattr(requests, method.lower())
+            rsp = req_collable(url, headers=self.get_headers(), data=data, **kwargs)
+            return rsp.json()
+        except requests.exceptions.RequestException as err:
+            logger.error("%s:\n %s", err_msg, err)
+
+
+class TinderSMSAuth(BaseTinderClient):
+    """
+    Handles the SMS authentication flow
+    """
+
+    phone_number: str
+    app_version: str
+    platform: str
+    user_agent: str
+    refresh_token: Optional[str]
+
+    def __init__(
+        self,
+        phone_number: int,
+        app_version: Optional[str] = Defaults.APP_VERSION,
+        platform: Optional[str] = Defaults.PLATFORM,
+        user_agent: Optional[str] = Defaults.USER_AGENT,
+    ):
+        super().__init__(app_version, platform, user_agent)
+        self.phone_number = phone_number
+
+    def request_otp_sms(self) -> Dict[str, str]:
+        """
+        Requests an OTP (One Time Password) SMS to be sent to the given phone number.
+        """
+        return self.general_request(
+            url=TinderSMSApiEndpoints.CODE_REQUEST_URL,
+            method="POST",
+            data={"phone_number": self.phone_number},
+            err_msg="Failed to request OTP SMS",
+            verify=False,
+        )
+
+    def get_refresh_token(self, otp_code: str):
+        """
+        Retrieves the refresh token from the server.
+        """
+
+        rsp = self.general_request(
+            url=TinderSMSApiEndpoints.CODE_VALIDATE_URL,
+            method="POST",
+            data={"otp_code": otp_code, "phone_number": self.phone_number},
+            err_msg="Failed to get refresh token",
+            verify=False,
+        )
+
+        if rsp.get("data")["validated"] is False:
+            raise ValueError("OTP code is not valid")
+        self.refresh_token = rsp.get("data")["refresh_token"]
+
+    def get_auth_token(self) -> str:
+        """
+        Retrieves the auth token from the server.
+        """
+        if self.refresh_token is None:
+            raise ValueError("Refresh token is not obtained yet")
+        rsp = self.general_request(
+            TinderSMSApiEndpoints.TOKEN_URL,
+            data={"refresh_token": self.refresh_token},
+            err_msg="Failed to get API auth token",
+            method="POST",
+            verify=False,
+        )
+        return rsp["data"]["api_token"]
+
+
+class TinderFBAuth(BaseTinderClient):
+    
+
+
+class TinderClient(BaseTinderClient):
     auth_token: str
     app_version: str
     platform: str
@@ -38,124 +154,10 @@ class TinderSMSApi:
         platform: Optional[str] = Defaults.PLATFORM,
         user_agent: Optional[str] = Defaults.USER_AGENT,
     ):
+        super().__init__(app_version, platform, user_agent)
         self.auth_token = auth_token
-        self.app_version = app_version
-        self.platform = platform
-        self.user_agent = user_agent
 
-    @staticmethod
-    def request_otp_sms(
-        phone_number: int,  # with country code
-        app_version: Optional[str] = Defaults.APP_VERSION,
-        platform: Optional[str] = Defaults.PLATFORM,
-        user_agent: Optional[str] = Defaults.USER_AGENT,
-    ):
-        """
-        Requests an OTP (One Time Password) SMS to be sent to the given phone number.
-        """
-        return TinderSMSApi.general_request(
-            url=TinderSMSApiEndpoints.CODE_REQUEST_URL,
-            method="POST",
-            headers=TinderSMSApi._get_headers(app_version, platform, user_agent),
-            data={"phone_number": phone_number},
-            err_msg="Failed to request OTP SMS",
-            verify=False,
-        )
-
-    @staticmethod
-    def get_refresh_token(
-        otp_code: str,
-        phone_number: int,
-        app_version: Optional[str] = Defaults.APP_VERSION,
-        platform: Optional[str] = Defaults.PLATFORM,
-        user_agent: Optional[str] = Defaults.USER_AGENT,
-    ) -> Optional[str]:
-        """
-        Returns the refresh token for the given the OTP which was requested by 'phone_number' using request_otp_sms.
-        """
-        response = TinderSMSApi.general_request(
-            url=TinderSMSApiEndpoints.CODE_VALIDATE_URL,
-            method="POST",
-            headers=TinderSMSApi._get_headers(app_version, platform, user_agent),
-            data={"otp_code": otp_code, "phone_number": phone_number},
-            err_msg="Failed to validate OTP code",
-            verify=False,
-        )
-
-        if response.get("data")["validated"] is False:
-            return None
-        else:
-            return response.get("data")["refresh_token"]
-
-    @staticmethod
-    def get_api_token(
-        refresh_token: str,
-        app_version: Optional[str] = Defaults.APP_VERSION,
-        platform: Optional[str] = Defaults.PLATFORM,
-        user_agent: Optional[str] = Defaults.USER_AGENT,
-    ):
-        """
-        Returns the API token for the user given the refresh token.
-        """
-        response = TinderSMSApi.general_request(
-            TinderSMSApiEndpoints.TOKEN_URL,
-            headers=TinderSMSApi._get_headers(app_version, platform, user_agent),
-            data={"refresh_token": refresh_token},
-            err_msg="Failed to get API token",
-            method="POST",
-            verify=False,
-        )
-
-        return response.get("data")["api_token"]
-
-    @staticmethod
-    def _get_headers(
-        app_version: str, platform: str, user_agent: str
-    ) -> Dict[str, str]:
-        return {
-            "app_version": app_version,
-            "platform": platform,
-            "content-type": "application/json",
-            "User-agent": user_agent,
-        }
-
-    @staticmethod
-    def general_request(
-        url: str,
-        method: Literal["GET", "POST", "PUT", "DELETE"],
-        err_msg: str,
-        data: Optional[Dict[str, str]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        **kwargs,
-    ) -> Dict[str, str]:
-        try:
-            r = None
-            data = json.dumps(data) if data else None
-            if method == "POST":
-                r = requests.post(url, headers=headers, data=data, **kwargs)
-            elif method == "GET":
-                r = requests.get(url, headers=headers, data=data, **kwargs)
-            elif method == "PUT":
-                r = requests.put(url, headers=headers, data=data, **kwargs)
-            elif method == "DELETE":
-                r = requests.delete(url, headers=headers, data=data, **kwargs)
-            else:
-                raise ValueError(f"Invalid method: {method}")
-            return r.json()
-        except requests.exceptions.RequestException as err:
-            logger.error(f"{err_msg}:", err)
-
-    def basic_request(
-        self,
-        url: str,
-        method: Literal["GET", "POST", "PUT", "DELETE"],
-        err_msg: str,
-        data: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, str]:
-        return self.general_request(url, method, err_msg, data, self.headers)
-
-    @property
-    def headers(self) -> Dict[str, str]:
+    def get_headers(self) -> Dict[str, str]:
         return {
             "app_version": self.app_version,
             "platform": self.platform,
@@ -168,7 +170,7 @@ class TinderSMSApi:
         """
         Returns a list of users that you can swipe on
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/users/recs",
             method="GET",
             err_msg="Something went wrong with getting recomendations",
@@ -180,7 +182,7 @@ class TinderSMSApi:
         The last activity date is defaulted at the beginning of time.
         Format for last_activity_date: "2017-07-09T10:28:13.392Z"
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/updates",
             method="POST",
             err_msg="Something went wrong with getting updates",
@@ -191,7 +193,7 @@ class TinderSMSApi:
         """
         Returns your own profile data
         """
-        res = self.basic_request(
+        res = self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/profile",
             method="GET",
             err_msg="Something went wrong with getting your data",
@@ -210,7 +212,7 @@ class TinderSMSApi:
         discoverable: true | false
         {"photo_optimizer_enabled":false}
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/profile",
             method="POST",
             err_msg="Something went wrong with changing your preferences",
@@ -224,7 +226,7 @@ class TinderSMSApi:
         'status', 'groups', 'products', 'rating', 'tutorials',
         'travel', 'notifications', 'user']
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/meta",
             method="GET",
             err_msg="Something went wrong with getting your metadata",
@@ -235,7 +237,7 @@ class TinderSMSApi:
         Updates your location to the given float inputs
         Note: Requires a passport / Tinder Plus
         """
-        self.basic_request(
+        self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/passport/user/travel",
             method="POST",
             err_msg="Something went wrong with updating your location",
@@ -243,7 +245,7 @@ class TinderSMSApi:
         )
 
     def reset_real_location(self):
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/passport/user/reset",
             method="POST",
             err_msg="Something went wrong with resetting your location",
@@ -253,7 +255,7 @@ class TinderSMSApi:
         """
         This works more consistently then the normal get_recommendations becuase it seeems to check new location
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/v2/recs/core?locale=en-US",
             method="GET",
             err_msg="Something went wrong with getting recomendations",
@@ -263,7 +265,7 @@ class TinderSMSApi:
         """
         Sets the username for the webprofile: https://www.gotinder.com/@YOURUSERNAME
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/profile/{username}",
             method="PUT",
             err_msg="Something went wrong with setting your webprofile username",
@@ -274,7 +276,7 @@ class TinderSMSApi:
         """
         Resets the username for the webprofile
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/profile/{username}",
             method="DELETE",
             err_msg="Something went wrong with resetting your webprofile username",
@@ -284,7 +286,7 @@ class TinderSMSApi:
         """
         Gets a user's profile via their id
         """
-        res = self.basic_request(
+        res = self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/user/{person_id}",
             method="GET",
             err_msg="Something went wrong with getting that person",
@@ -292,7 +294,7 @@ class TinderSMSApi:
         return parse_profile_response(res)
 
     def send_msg(self, match_id: str, msg: str):
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/user/matches/{match_id}",
             method="POST",
             err_msg="Something went wrong. Could not send your message",
@@ -300,21 +302,21 @@ class TinderSMSApi:
         )
 
     def superlike(self, person_id: str):
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/like/{person_id}/super",
             method="POST",
             err_msg="Something went wrong. Could not superlike",
         )
 
     def like(self, person_id: str):
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/like/{person_id}",
             method="GET",
             err_msg="Something went wrong. Could not like",
         )
 
     def dislike(self, person_id: str):
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/pass/{person_id}",
             method="GET",
             err_msg="Something went wrong. Could not dislike",
@@ -327,7 +329,7 @@ class TinderSMSApi:
             1 : Feels like spam and no explanation
             4 : Inappropriate Photos and no explanation
         """
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/report/{person_id}",
             method="POST",
             err_msg="Something went wrong. Could not report",
@@ -335,7 +337,7 @@ class TinderSMSApi:
         )
 
     def match_info(self, match_id: str):
-        return self.basic_request(
+        return self.general_request(
             f"{TinderSMSApiEndpoints.HOST}/v2/matches/{match_id}?locale=en&is_tinder_u=false",
             method="GET",
             err_msg="Something went wrong. Could not get your match info",
@@ -351,7 +353,7 @@ class TinderSMSApi:
         if next_page_token is not None:
             url += f"&page_token={next_page_token}"
 
-        res = self.basic_request(
+        res = self.general_request(
             url,
             method="GET",
             err_msg="Something went wrong. Could not get your match info",
@@ -368,7 +370,7 @@ class TinderSMSApi:
         if next_page_token is not None:
             url += f"&page_token={next_page_token}"
 
-        res = self.basic_request(
+        res = self.general_request(
             url,
             method="GET",
             err_msg="Something went wrong. Could not get your match info",
